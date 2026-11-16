@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // 社区挂在官网 maturo.cn/community 子路径下（Nginx 反代去掉前缀）
+  basePath: "/community",
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

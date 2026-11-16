@@ -32,6 +32,16 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# database (local SQLite dev database — not committed)
+dev.db
+dev.db-journal
+*.db
+*.db-journal
+
+# uploaded files (local uploads — not committed)
+/public/uploads/
 
 # vercel
 .vercel

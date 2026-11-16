@@ -1,0 +1,179 @@
+// 出云 ROS2 机器人社区 数据库 Schema
+// 本地开发用 SQLite，服务器部署用 PostgreSQL（provider 通过 DATABASE_URL 环境变量 + 部署时调整）
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ===== 用户 =====
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  handle       String    @unique // 公开昵称/用户名（真实身份与公开昵称分离）
+  name         String? // 展示名
+  avatar       String?
+  bio          String?
+  role         String    @default("user") // user | admin
+  status       String    @default("active") // active | banned
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  projects     Project[]
+  collections  Collection[]
+  comments     Comment[]
+  likes        Like[]
+  sessions     Session[]
+
+  @@map("users")
+}
+
+// ===== 项目 =====
+model Project {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  summary      String
+  description  String   @default("")
+  cover        String? // 封面图 URL
+  category     String
+  difficulty   String // 入门 | 进阶 | 硬核
+  tags         String   @default("") // JSON 数组字符串
+  license      String   @default("MIT")
+  costEstimate Float    @default(0)
+  status       String   @default("published") // draft | published（预留 pending/rejected 审核位）
+  deletedAt    DateTime? // 软删除标记：非空表示已删除（收藏列表据此显示"原作品已删除"）
+  views        Int      @default(0)
+  likeCount    Int      @default(0)
+  collectCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  authorId     String
+  author       User     @relation(fields: [authorId], references: [id])
+
+  bom          BomItem[]
+  attachments  Attachment[]
+  steps        Step[]
+  versions     Version[]
+  comments     Comment[]
+  collections  Collection[]
+  likes        Like[]
+
+  @@index([authorId])
+  @@index([status])
+  @@map("projects")
+}
+
+// ===== BOM 物料 =====
+model BomItem {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  designator String // 位号
+  partNo    String // 型号
+  package   String? // 封装
+  qty       Int     @default(1)
+  unitPrice Float   @default(0)
+  note      String?
+  order     Int     @default(0)
+
+  @@map("bom_items")
+}
+
+// ===== 附件 =====
+model Attachment {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  type      String // 源码 | 固件 | 文件 | 原理图 | PCB
+  size      String?
+  url       String?
+  order     Int     @default(0)
+
+  @@map("attachments")
+}
+
+// ===== 制作步骤 =====
+model Step {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  order     Int
+  title     String
+  content   String
+  image     String?
+
+  @@map("steps")
+}
+
+// ===== 版本记录 =====
+model Version {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ver       String
+  date      String
+  changelog String
+
+  @@map("versions")
+}
+
+// ===== 收藏 =====
+model Collection {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, projectId])
+  @@map("collections")
+}
+
+// ===== 评论 =====
+model Comment {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  deleted   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@map("comments")
+}
+
+// ===== 点赞 =====
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, projectId])
+  @@map("likes")
+}
+
+// ===== 会话 =====
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@map("sessions")
+}
