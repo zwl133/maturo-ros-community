@@ -5,7 +5,6 @@ import ProjectCard from "@/components/ProjectCard";
 import { listProjects } from "@/lib/services/project-service";
 
 // 首页展示最新/热门项目，数据实时读库，走运行时渲染
-export const instant = false;
 
 // 机器人社区分类
 const categories = [

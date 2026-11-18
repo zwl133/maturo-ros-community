@@ -6,7 +6,6 @@ import { getMyProjects } from "@/lib/services/project-service";
 import MyProjectsClient from "./MyProjectsClient";
 
 // 数据实时读库 + 读取登录态，走运行时渲染
-export const instant = false;
 
 // 我的项目（含草稿，仅本人可见）
 export default async function MyProjectsPage() {

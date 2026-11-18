@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { toggleCollect, toggleLike, createComment } from "@/lib/services/project-service";
+import { InputValidationError, cleanText, LIMITS } from "@/lib/validate";
 
 // 收藏/点赞/评论：按 action 分发
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
@@ -34,16 +35,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
       case "like":
         return NextResponse.json(await toggleLike(user.id, project.id));
       case "comment": {
-        if (!body.content?.trim()) {
+        const content = cleanText(body.content ?? "", "评论内容", LIMITS.comment);
+        if (!content) {
           return NextResponse.json({ error: "评论内容不能为空" }, { status: 400 });
         }
-        const comment = await createComment(user.id, project.id, body.content.trim());
+        const comment = await createComment(user.id, project.id, content);
         return NextResponse.json({ ok: true, comment });
       }
       default:
         return NextResponse.json({ error: "未知操作" }, { status: 400 });
     }
   } catch (e) {
+    if (e instanceof InputValidationError) {
+      return NextResponse.json({ error: e.message, field: e.field }, { status: 400 });
+    }
     console.error("操作失败:", e);
     return NextResponse.json({ error: "操作失败" }, { status: 500 });
   }

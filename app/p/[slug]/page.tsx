@@ -16,7 +16,6 @@ import InteractButtons from "./InteractButtons";
 import DeleteProjectButton from "./DeleteProjectButton";
 
 // 动态路由走运行时渲染（数据依赖 params + cookies）
-export const instant = false;
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

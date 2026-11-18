@@ -7,7 +7,6 @@ import { getCurrentUser } from "@/lib/session";
 import ProfileEditor from "./ProfileEditor";
 
 // 动态路由走运行时渲染
-export const instant = false;
 
 export async function generateMetadata({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;

@@ -5,7 +5,6 @@ import { getCurrentUser } from "@/lib/session";
 import PublishForm, { type ProjectFormInitial } from "@/app/publish/PublishForm";
 
 // 动态路由走运行时渲染（依赖 params 和 cookie）
-export const instant = false;
 
 // 编辑项目页（仅作者本人可访问）
 export default async function EditProjectPage({ params }: { params: Promise<{ slug: string }> }) {
