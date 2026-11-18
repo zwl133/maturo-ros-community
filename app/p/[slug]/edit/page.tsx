@@ -10,10 +10,12 @@ export const instant = false;
 // 编辑项目页（仅作者本人可访问）
 export default async function EditProjectPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const project = await getProjectBySlug(slug);
+  const currentUser = await getCurrentUser();
+
+  // 草稿项目仅作者本人可编辑（加载时传入作者 id，允许返回自己的草稿）
+  const project = await getProjectBySlug(slug, currentUser?.id);
   if (!project) notFound();
 
-  const currentUser = await getCurrentUser();
   if (!currentUser) {
     redirect(`/login?redirect=/p/${slug}/edit`);
   }
@@ -48,7 +50,7 @@ export default async function EditProjectPage({ params }: { params: Promise<{ sl
       unitPrice: b.unitPrice,
       note: b.note ?? "",
     })),
-    steps: (project.steps ?? []).map((s) => ({ order: s.order, title: s.title, content: s.content })),
+    steps: (project.steps ?? []).map((s) => ({ order: s.order, title: s.title, content: s.content, image: s.image ?? undefined })),
   };
 
   return (

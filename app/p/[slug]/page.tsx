@@ -15,7 +15,7 @@ import { getCurrentUser } from "@/lib/session";
 import InteractButtons from "./InteractButtons";
 import DeleteProjectButton from "./DeleteProjectButton";
 
-// 动态路由走运行时渲染（数据依赖 params）
+// 动态路由走运行时渲染（数据依赖 params + cookies）
 export const instant = false;
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
@@ -319,6 +319,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                       <div className="flex-1">
                         <h3 className="text-sm font-semibold text-ink">{s.title}</h3>
                         <p className="mt-1 text-sm leading-relaxed text-ink-secondary">{s.content}</p>
+                        {s.image && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={s.image}
+                            alt={`步骤 ${s.order} 配图`}
+                            className="mt-3 max-h-80 w-auto max-w-full rounded-xl border border-border object-contain"
+                          />
+                        )}
                       </div>
                     </li>
                   ))}

@@ -92,7 +92,8 @@ export async function listProjects(filter: ProjectFilter = {}) {
 }
 
 // 获取单个项目详情（含 BOM、附件、步骤、版本、作者）
-export async function getProjectBySlug(slug: string) {
+// includeDraftOwnerId：传入作者 id 时，允许返回该作者自己的草稿（用于编辑页加载）
+export async function getProjectBySlug(slug: string, includeDraftOwnerId?: string) {
   const project = await prisma.project.findUnique({
     where: { slug },
     include: {
@@ -105,7 +106,11 @@ export async function getProjectBySlug(slug: string) {
     },
   });
 
-  if (!project || project.status !== "published" || project.deletedAt) return null;
+  if (!project || project.deletedAt) return null;
+  // 草稿仅作者本人可见
+  if (project.status !== "published") {
+    if (!includeDraftOwnerId || project.authorId !== includeDraftOwnerId) return null;
+  }
   return serializeProject(project);
 }
 
@@ -116,6 +121,19 @@ export async function getProjectsByAuthor(handle: string) {
 
   const projects = await prisma.project.findMany({
     where: { authorId: user.id, status: "published", deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    include: {
+      author: { select: { handle: true, name: true, avatar: true } },
+      _count: { select: { comments: true } },
+    },
+  });
+  return projects.map(serializeProject);
+}
+
+// 获取当前用户自己的全部项目（含草稿，仅本人可见）
+export async function getMyProjects(userId: string) {
+  const projects = await prisma.project.findMany({
+    where: { authorId: userId, deletedAt: null },
     orderBy: { createdAt: "desc" },
     include: {
       author: { select: { handle: true, name: true, avatar: true } },
@@ -144,6 +162,7 @@ export async function getUserByHandle(handle: string) {
 }
 
 // 发布项目（含 BOM、步骤等子表，事务写入）
+// status: published（发布）| draft（草稿，仅自己可见）
 export async function createProject(input: {
   userId: string;
   title: string;
@@ -155,8 +174,9 @@ export async function createProject(input: {
   license: string;
   cover?: string;
   costEstimate?: number;
+  status?: string;
   bom?: { designator: string; partNo: string; package?: string; qty: number; unitPrice?: number; note?: string }[];
-  steps?: { order: number; title: string; content: string }[];
+  steps?: { order: number; title: string; content: string; image?: string }[];
   attachments?: { name: string; type: string; url?: string; size?: string }[];
 }) {
   // 生成 slug（ASCII 安全：去掉非字母数字字符，追加时间戳保证唯一）
@@ -182,7 +202,7 @@ export async function createProject(input: {
       cover: input.cover,
       costEstimate: input.costEstimate ?? 0,
       authorId: input.userId,
-      status: "published", // 先免审直接上架
+      status: input.status === "draft" ? "draft" : "published", // 草稿或发布
       bom: input.bom?.length
         ? { create: input.bom.map((b, i) => ({ ...b, order: i })) }
         : undefined,
@@ -215,8 +235,9 @@ export async function updateProject(
     license: string;
     cover?: string;
     costEstimate?: number;
+    status?: string;
     bom?: { designator: string; partNo: string; package?: string; qty: number; unitPrice?: number; note?: string }[];
-    steps?: { order: number; title: string; content: string }[];
+    steps?: { order: number; title: string; content: string; image?: string }[];
     attachments?: { name: string; type: string; url?: string; size?: string }[];
   }
 ) {
@@ -239,6 +260,8 @@ export async function updateProject(
         license: input.license,
         cover: input.cover ?? null,
         costEstimate: input.costEstimate ?? 0,
+        // 仅在明确传入 status 时更新（避免草稿被编辑操作意外改回发布）
+        ...(input.status === "draft" || input.status === "published" ? { status: input.status } : {}),
       },
     });
 

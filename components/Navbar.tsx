@@ -63,7 +63,7 @@ export default function Navbar() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white font-bold text-lg">
             出
           </span>
-          <span className="text-lg font-semibold tracking-wide text-ink">出云 ROS 社区</span>
+          <span className="whitespace-nowrap text-lg font-semibold tracking-wide text-ink">出云 ROS 社区</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6 text-sm text-ink-secondary">
@@ -77,14 +77,14 @@ export default function Navbar() {
             <>
               <Link
                 href="/publish"
-                className="inline-flex items-center rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover transition-colors"
+                className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover transition-colors"
               >
                 + 发布项目
               </Link>
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen((v) => !v)}
-                  className="flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-sm text-ink hover:border-primary hover:text-primary transition-colors"
+                  className="flex shrink-0 items-center gap-2 rounded-full border border-border px-3 py-1.5 text-sm text-ink hover:border-primary hover:text-primary transition-colors"
                 >
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-soft text-xs font-medium text-primary">
                     {(user.name ?? user.handle).slice(0, 1)}
@@ -111,6 +111,13 @@ export default function Navbar() {
                       className="flex items-center gap-2 px-4 py-2.5 text-sm text-ink hover:bg-surface transition-colors"
                     >
                       <span>👤</span> 我的主页
+                    </Link>
+                    <Link
+                      href="/me/projects"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-ink hover:bg-surface transition-colors"
+                    >
+                      <span>📁</span> 我的项目
                     </Link>
                     <Link
                       href="/me/collections"

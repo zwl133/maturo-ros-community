@@ -1,7 +1,11 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import SiteLayout from "@/components/SiteLayout";
 import { listProjects } from "@/lib/services/project-service";
 import ExploreClient from "./ExploreClient";
+
+// 项目广场需实时展示最新发布，数据实时读库，走运行时渲染
+export const instant = false;
 
 // 机器人社区分类与难度
 const categories = ["移动机器人", "机械臂", "无人机", "ROS2 入门", "SLAM 导航", "视觉", "仿真", "其他"];
@@ -12,6 +16,7 @@ const tags = [
 ];
 
 export default async function ExplorePage() {
+  await connection();
   const projects = await listProjects({});
 
   return (

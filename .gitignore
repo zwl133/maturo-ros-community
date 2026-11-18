@@ -49,3 +49,13 @@ dev.db-journal
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 部署与本地工具（含服务器凭据，不入库）
+deploy_ssh.py
+deploy/SESSION_SECRET.txt
+test-all.sh
+ux-test.sh
+ros-community-deploy.tar.gz
+
+# 本地生成/临时文件
+/public/generated/

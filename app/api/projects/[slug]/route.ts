@@ -39,6 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       license: body.license ?? "MIT",
       cover: body.cover,
       costEstimate: body.costEstimate ? Number(body.costEstimate) : 0,
+      status: body.status === "draft" ? "draft" : body.status === "published" ? "published" : undefined,
       bom: Array.isArray(body.bom) ? body.bom : [],
       steps: Array.isArray(body.steps) ? body.steps : [],
       attachments: Array.isArray(body.attachments) ? body.attachments : [],
