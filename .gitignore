@@ -62,3 +62,6 @@ ros-community-deploy.tar.gz
 
 # 浏览器自动化测试临时文件
 .playwright-cli/
+
+# 本地 AI 生成素材与预览截图
+/generated/
