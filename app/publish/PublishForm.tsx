@@ -755,11 +755,19 @@ function EditStage(props: EditStageProps) {
                     {row.libraryId ? (
                       <>
                         <div className="truncate text-sm font-semibold text-ink">{row.partNo}</div>
-                        <div className="truncate text-xs text-ink-tertiary">
-                          {row.category || "元器件"} · ¥{row.unitPrice}
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-ink-tertiary">{row.category || "元器件"}</span>
                           {row.autoTags && row.autoTags.length > 0 && (
-                            <span className="ml-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] text-primary">自动关联「{row.autoTags.join("、")}」标签</span>
+                            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] text-primary">自动关联「{row.autoTags.join("、")}」标签</span>
                           )}
+                          <span className="ml-auto flex items-center gap-1.5">
+                            <span className="text-xs text-ink-tertiary">数量</span>
+                            <input type="number" min={1} value={row.qty || 1} onChange={(e) => updateBom(idx, "qty", Number(e.target.value))}
+                              className="h-8 w-16 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
+                            <span className="text-xs text-ink-tertiary">单价 ¥</span>
+                            <input type="number" min={0} step="0.01" value={row.unitPrice || ""} onChange={(e) => updateBom(idx, "unitPrice", Number(e.target.value))}
+                              placeholder="0" className="h-8 w-24 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
+                          </span>
                         </div>
                       </>
                     ) : (
