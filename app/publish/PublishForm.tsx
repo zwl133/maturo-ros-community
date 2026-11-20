@@ -135,6 +135,8 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
   const [draftSaved, setDraftSaved] = useState(false);
   const [autosaving, setAutosaving] = useState(false);
   const [lastAutoSaved, setLastAutoSaved] = useState<string | null>(null);
+  // 新建模式下首次自动保存后记录草稿 slug（避免重复 POST 创建）
+  const [draftSlug, setDraftSlug] = useState<string | null>(initial?.slug ?? null);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [bomSearchOpen, setBomSearchOpen] = useState(false);
@@ -416,8 +418,10 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
 
     const payload = buildPayload(status);
     try {
-      const url = isEdit ? `/api/projects/${initial!.slug}` : "/api/projects";
-      const method = isEdit ? "PATCH" : "POST";
+      // 编辑模式走 PATCH；新建模式若已通过自动保存创建过草稿，也走 PATCH 更新（避免重复创建）
+      const targetSlug = isEdit ? initial!.slug : draftSlug;
+      const url = targetSlug ? `/api/projects/${targetSlug}` : "/api/projects";
+      const method = targetSlug ? "PATCH" : "POST";
       const res = await apiFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -450,23 +454,58 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
     }
   };
 
-  // ===== 草稿自动保存（仅编辑模式：内容变化后延迟 3 秒静默保存）=====
+  // ===== 草稿自动保存（编辑模式 + 新建模式：内容变化后延迟 3 秒静默保存）=====
   const autosaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipFirstAutoSave = useRef(true);
 
+  // 新建模式下是否有实际内容（用于判断是否值得触发自动保存，避免空表单就创建草稿）
+  const hasContent = useMemo(
+    () =>
+      title.trim() !== "" ||
+      summary.trim() !== "" ||
+      description.trim() !== "" ||
+      bom.some((b) => b.partNo.trim() !== "" || b.designator.trim() !== "") ||
+      steps.some((s) => s.title.trim() !== "" || s.content.trim() !== ""),
+    [title, summary, description, bom, steps]
+  );
+
   // 静默保存草稿（不跳转、不弹提示，仅更新"已自动保存"时间）
   const autosaveDraft = useCallback(async () => {
-    if (!isEdit || !initial) return;
     setAutosaving(true);
     const payload = buildPayload("draft");
     try {
-      const res = await apiFetch(`/api/projects/${initial.slug}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        setLastAutoSaved(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+      if (isEdit && initial) {
+        // 编辑已有项目：一直用 PATCH 更新
+        const res = await apiFetch(`/api/projects/${initial.slug}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          setLastAutoSaved(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+        }
+      } else if (draftSlug) {
+        // 新建模式 + 已创建过草稿：用 PATCH 更新这个草稿
+        const res = await apiFetch(`/api/projects/${draftSlug}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          setLastAutoSaved(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+        }
+      } else {
+        // 新建模式 + 首次自动保存：POST 创建草稿，记录 slug（后续转 PATCH，避免重复创建）
+        const res = await apiFetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.ok && data.slug) {
+          setDraftSlug(data.slug);
+          setLastAutoSaved(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+        }
       }
       // 401/其他错误静默忽略，不打断用户输入
     } catch {
@@ -474,16 +513,16 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
     } finally {
       setAutosaving(false);
     }
-  }, [isEdit, initial, title, summary, description, category, difficulty, tags, license, cover, bom, steps, repos, media, bomTotal]);
+  }, [isEdit, initial, draftSlug, title, summary, description, category, difficulty, tags, license, cover, bom, steps, repos, media, bomTotal]);
 
   useEffect(() => {
-    // 仅编辑模式开启自动保存
-    if (!isEdit) return;
-    // 跳过首次挂载（避免刚进编辑页就触发一次保存）
+    // 跳过首次挂载（避免刚进页面就触发一次保存）
     if (skipFirstAutoSave.current) {
       skipFirstAutoSave.current = false;
       return;
     }
+    // 新建模式下没有实际内容时不触发（避免空表单就创建草稿）
+    if (!isEdit && !hasContent) return;
     // 清除上一个定时器，防抖 3 秒
     if (autosaveRef.current) clearTimeout(autosaveRef.current);
     autosaveRef.current = setTimeout(() => {
@@ -492,7 +531,7 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
     return () => {
       if (autosaveRef.current) clearTimeout(autosaveRef.current);
     };
-  }, [title, summary, description, category, difficulty, tags, license, cover, bom, steps, repos, media, autosaveDraft]);
+  }, [isEdit, hasContent, title, summary, description, category, difficulty, tags, license, cover, bom, steps, repos, media, autosaveDraft]);
 
   const preflight = useMemo(() => {
     const items = [
@@ -512,17 +551,15 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
         <div className="mx-auto flex max-w-[1200px] items-center gap-3 px-4 py-3 sm:px-6">
           <StageTabs stage={stage} onChange={setStage} />
           <div className="ml-auto flex items-center gap-2">
-            {isEdit && (
-              <span className="hidden text-xs text-ink-tertiary sm:inline-flex sm:items-center sm:gap-1">
-                {autosaving ? (
-                  <><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />自动保存中…</>
-                ) : lastAutoSaved ? (
-                  <><span className="h-1.5 w-1.5 rounded-full bg-green-500" />已自动保存 {lastAutoSaved}</>
-                ) : (
-                  <span className="text-ink-tertiary">编辑内容将自动保存为草稿</span>
-                )}
-              </span>
-            )}
+            <span className="hidden text-xs text-ink-tertiary sm:inline-flex sm:items-center sm:gap-1">
+              {autosaving ? (
+                <><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />自动保存中…</>
+              ) : lastAutoSaved ? (
+                <><span className="h-1.5 w-1.5 rounded-full bg-green-500" />已自动保存 {lastAutoSaved}</>
+              ) : (
+                <span className="text-ink-tertiary">{isEdit ? "编辑内容将自动保存为草稿" : "内容将自动保存为草稿"}</span>
+              )}
+            </span>
             <button
               onClick={() => { if (isEdit) router.push(`/p/${initial!.slug}`); else setError("请先保存后再预览"); }}
               className="hidden rounded-lg px-3 py-2 text-sm text-ink-secondary hover:bg-surface hover:text-primary sm:block"
