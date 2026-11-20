@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { compressImage } from "@/lib/compressImage";
+import { parseBomExcel } from "@/lib/parseBomExcel";
 
 const MAX_IMAGES = 15; // 单项目图片上限
 const MAX_TAGS = 5; // 标签上限
@@ -132,13 +133,17 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
   const [loading, setLoading] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
+  const [autosaving, setAutosaving] = useState(false);
+  const [lastAutoSaved, setLastAutoSaved] = useState<string | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [bomSearchOpen, setBomSearchOpen] = useState(false);
   const [bomSearch, setBomSearch] = useState("");
+  const [importingBom, setImportingBom] = useState(false);
 
   const coverInputRef = useRef<HTMLInputElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const bomExcelInputRef = useRef<HTMLInputElement>(null);
 
   const imageCount = useMemo(
     () => media.filter((m) => m.type === "image" && m.url.trim()).length,
@@ -283,6 +288,42 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
     setBomSearch("");
   };
 
+  // 上传 Excel 解析 BOM
+  const handleBomExcelUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!/\.(xlsx|xls|csv)$/i.test(file.name) && !/spreadsheet|csv|excel/i.test(file.type)) {
+      setError("仅支持 .xlsx / .xls / .csv 文件");
+      return;
+    }
+    setImportingBom(true);
+    setError("");
+    try {
+      const rows = await parseBomExcel(file);
+      if (rows.length === 0) {
+        setError("Excel 中没有解析到有效的物料数据");
+        return;
+      }
+      setBom((prev) => [
+        ...prev,
+        ...rows.map((r) => ({
+          designator: r.designator,
+          partNo: r.partNo,
+          package: r.package,
+          qty: r.qty,
+          unitPrice: r.unitPrice,
+          note: r.note,
+        })),
+      ]);
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Excel 解析失败，请检查文件格式");
+    } finally {
+      setImportingBom(false);
+      if (bomExcelInputRef.current) bomExcelInputRef.current.value = "";
+    }
+  };
+
   const removeBomRow = (idx: number) => setBom((prev) => prev.filter((_, i) => i !== idx));
   const updateBom = (idx: number, field: keyof BomRow, value: string | number) =>
     setBom((prev) => prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
@@ -409,6 +450,50 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
     }
   };
 
+  // ===== 草稿自动保存（仅编辑模式：内容变化后延迟 3 秒静默保存）=====
+  const autosaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipFirstAutoSave = useRef(true);
+
+  // 静默保存草稿（不跳转、不弹提示，仅更新"已自动保存"时间）
+  const autosaveDraft = useCallback(async () => {
+    if (!isEdit || !initial) return;
+    setAutosaving(true);
+    const payload = buildPayload("draft");
+    try {
+      const res = await apiFetch(`/api/projects/${initial.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setLastAutoSaved(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+      }
+      // 401/其他错误静默忽略，不打断用户输入
+    } catch {
+      // 网络失败静默忽略
+    } finally {
+      setAutosaving(false);
+    }
+  }, [isEdit, initial, title, summary, description, category, difficulty, tags, license, cover, bom, steps, repos, media, bomTotal]);
+
+  useEffect(() => {
+    // 仅编辑模式开启自动保存
+    if (!isEdit) return;
+    // 跳过首次挂载（避免刚进编辑页就触发一次保存）
+    if (skipFirstAutoSave.current) {
+      skipFirstAutoSave.current = false;
+      return;
+    }
+    // 清除上一个定时器，防抖 3 秒
+    if (autosaveRef.current) clearTimeout(autosaveRef.current);
+    autosaveRef.current = setTimeout(() => {
+      autosaveDraft();
+    }, 3000);
+    return () => {
+      if (autosaveRef.current) clearTimeout(autosaveRef.current);
+    };
+  }, [title, summary, description, category, difficulty, tags, license, cover, bom, steps, repos, media, autosaveDraft]);
+
   const preflight = useMemo(() => {
     const items = [
       { label: "标题与简介", ok: !!title.trim() && !!summary.trim(), detail: title.trim() && summary.trim() ? "已填写" : "未填写" },
@@ -427,6 +512,17 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
         <div className="mx-auto flex max-w-[1200px] items-center gap-3 px-4 py-3 sm:px-6">
           <StageTabs stage={stage} onChange={setStage} />
           <div className="ml-auto flex items-center gap-2">
+            {isEdit && (
+              <span className="hidden text-xs text-ink-tertiary sm:inline-flex sm:items-center sm:gap-1">
+                {autosaving ? (
+                  <><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />自动保存中…</>
+                ) : lastAutoSaved ? (
+                  <><span className="h-1.5 w-1.5 rounded-full bg-green-500" />已自动保存 {lastAutoSaved}</>
+                ) : (
+                  <span className="text-ink-tertiary">编辑内容将自动保存为草稿</span>
+                )}
+              </span>
+            )}
             <button
               onClick={() => { if (isEdit) router.push(`/p/${initial!.slug}`); else setError("请先保存后再预览"); }}
               className="hidden rounded-lg px-3 py-2 text-sm text-ink-secondary hover:bg-surface hover:text-primary sm:block"
@@ -476,6 +572,7 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
           bom={bom} bomTotal={bomTotal} bomSearchOpen={bomSearchOpen} setBomSearchOpen={setBomSearchOpen}
           bomSearch={bomSearch} setBomSearch={setBomSearch} filteredParts={filteredParts}
           addBomFromLibrary={addBomFromLibrary} addBomManual={addBomManual} updateBom={updateBom} removeBomRow={removeBomRow}
+          importingBom={importingBom} onBomExcelUpload={handleBomExcelUpload} bomExcelInputRef={bomExcelInputRef}
           steps={steps} addStep={addStep} removeStep={removeStep} moveStep={moveStep} updateStep={updateStep} onStepImageUpload={handleStepImageUpload}
           media={media} imageCount={imageCount} uploadingMedia={uploadingMedia} onMediaUpload={handleMediaUpload} mediaInputRef={mediaInputRef}
           addVideo={addVideo} removeMedia={removeMedia} updateMedia={updateMedia}
@@ -537,6 +634,7 @@ interface EditStageProps {
   bom: BomRow[]; bomTotal: number; bomSearchOpen: boolean; setBomSearchOpen: (v: boolean) => void;
   bomSearch: string; setBomSearch: (v: string) => void; filteredParts: LibraryPart[];
   addBomFromLibrary: (p: LibraryPart) => void; addBomManual: () => void; updateBom: (idx: number, f: keyof BomRow, v: string | number) => void; removeBomRow: (idx: number) => void;
+  importingBom: boolean; onBomExcelUpload: (f: FileList | null) => void; bomExcelInputRef: React.RefObject<HTMLInputElement | null>;
   steps: StepRow[]; addStep: () => void; removeStep: (idx: number) => void; moveStep: (idx: number, d: -1 | 1) => void; updateStep: (idx: number, f: keyof StepRow, v: string) => void; onStepImageUpload: (idx: number, f: FileList | null) => void;
   media: MediaRow[]; imageCount: number; uploadingMedia: boolean; onMediaUpload: (f: FileList | null) => void; mediaInputRef: React.RefObject<HTMLInputElement | null>;
   addVideo: () => void; removeMedia: (idx: number) => void; updateMedia: (idx: number, f: keyof MediaRow, v: string) => void;
@@ -551,6 +649,7 @@ function EditStage(props: EditStageProps) {
     title, setTitle, summary, setSummary, description, setDescription,
     bom, bomTotal, bomSearchOpen, setBomSearchOpen, bomSearch, setBomSearch,
     filteredParts, addBomFromLibrary, addBomManual, updateBom, removeBomRow,
+    importingBom, onBomExcelUpload, bomExcelInputRef,
     steps, addStep, removeStep, moveStep, updateStep, onStepImageUpload,
     media, imageCount, uploadingMedia, onMediaUpload, mediaInputRef, addVideo, removeMedia, updateMedia,
     repos, addRepo, removeRepo, updateRepo,
@@ -662,16 +761,26 @@ function EditStage(props: EditStageProps) {
                 ))}
                 {filteredParts.length === 0 && <div className="px-2 py-4 text-center text-sm text-ink-tertiary">未找到，可新建条目</div>}
               </div>
-              <div className="border-t border-border p-2">
-                <button onClick={addBomManual} className="w-full rounded-lg px-3 py-2 text-sm text-primary hover:bg-primary-soft">+ 新建自定义元器件（手填）</button>
+              <div className="flex gap-2 border-t border-border p-2">
+                <button onClick={addBomManual} className="flex-1 rounded-lg px-3 py-2 text-sm text-primary hover:bg-primary-soft">+ 新建自定义元器件（手填）</button>
+                <button onClick={() => bomExcelInputRef.current?.click()} className="flex-1 rounded-lg px-3 py-2 text-sm text-primary hover:bg-primary-soft">📄 上传 Excel 解析 BOM</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => setBomSearchOpen(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-strong px-4 py-3 text-sm text-ink-secondary transition-colors hover:border-primary hover:text-primary">
-              🔍 搜索元器件添加…（可新建条目 · 自动汇总预估成本）
-            </button>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => setBomSearchOpen(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-strong px-4 py-3 text-sm text-ink-secondary transition-colors hover:border-primary hover:text-primary">
+                🔍 搜索元器件添加…（可新建条目 · 自动汇总预估成本）
+              </button>
+              <button onClick={() => bomExcelInputRef.current?.click()} disabled={importingBom}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border-strong px-4 py-3 text-sm text-ink-secondary transition-colors hover:border-primary hover:text-primary disabled:opacity-50">
+                {importingBom ? "解析中…" : "📄 上传 Excel 一键导入 BOM（支持 .xlsx / .xls / .csv）"}
+              </button>
+            </div>
           )}
+
+          <input ref={bomExcelInputRef} type="file" accept=".xlsx,.xls,.csv"
+            onChange={(e) => onBomExcelUpload(e.target.files)} className="hidden" />
 
           {bom.length > 0 && (
             <div className="mt-2 text-right text-xs text-ink-tertiary">

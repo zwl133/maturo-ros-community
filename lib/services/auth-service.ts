@@ -136,3 +136,29 @@ export async function updateProfile(
 
   return { id: user.id, handle: user.handle, name: user.name, bio: user.bio, avatar: user.avatar };
 }
+
+// 管理员重置用户密码：设定新密码，并吊销该用户所有会话（强制重新登录）
+export async function adminResetPassword(targetUserId: string, newPassword: string) {
+  if (!newPassword || newPassword.length < 6) {
+    throw new AuthError("新密码至少 6 位", 400, "WEAK_PASSWORD");
+  }
+  if (newPassword.length > 72) {
+    throw new AuthError("密码过长", 400, "INVALID_PASSWORD");
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: targetUserId } });
+  if (!target) {
+    throw new AuthError("用户不存在", 404, "USER_NOT_FOUND");
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+
+  await prisma.$transaction(async (tx) => {
+    // 更新密码
+    await tx.user.update({ where: { id: targetUserId }, data: { passwordHash } });
+    // 吊销该用户所有会话，强制重新登录
+    await tx.session.deleteMany({ where: { userId: targetUserId } });
+  });
+
+  return { ok: true, handle: target.handle, email: target.email };
+}
