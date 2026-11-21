@@ -4,7 +4,7 @@ import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { compressImage } from "@/lib/compressImage";
-import { parseBomExcel } from "@/lib/parseBomExcel";
+import { parseBomExcel, buildRowsWithMapping, BOM_FIELDS, type BomColumn, type BomFieldKey, type ParsedBomRow } from "@/lib/parseBomExcel";
 
 const MAX_IMAGES = 15; // 单项目图片上限
 const MAX_TAGS = 5; // 标签上限
@@ -142,6 +142,11 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
   const [bomSearchOpen, setBomSearchOpen] = useState(false);
   const [bomSearch, setBomSearch] = useState("");
   const [importingBom, setImportingBom] = useState(false);
+  // 列映射面板（方案 C：自动识别不全时弹出）
+  const [bomMappingOpen, setBomMappingOpen] = useState(false);
+  const [bomMappingColumns, setBomMappingColumns] = useState<BomColumn[]>([]);
+  const [bomMappingData, setBomMappingData] = useState<unknown[][]>([]);
+  const [bomMappingHeaderIdx, setBomMappingHeaderIdx] = useState(0);
 
   const coverInputRef = useRef<HTMLInputElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -301,29 +306,60 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
     setImportingBom(true);
     setError("");
     try {
-      const rows = await parseBomExcel(file);
-      if (rows.length === 0) {
-        setError("Excel 中没有解析到有效的物料数据");
+      const result = await parseBomExcel(file);
+      // 关键字段齐全（partNo 识别出来）→ 直接导入
+      if (result.columns.some((c) => c.recognized === "partNo")) {
+        applyBomRows(result.rows);
         return;
       }
-      setBom((prev) => [
-        ...prev,
-        ...rows.map((r) => ({
-          designator: r.designator,
-          partNo: r.partNo,
-          package: r.package,
-          qty: r.qty,
-          unitPrice: r.unitPrice,
-          note: r.note,
-        })),
-      ]);
-      setError("");
+      // 识别不全（缺 partNo 等关键字段）→ 弹列映射面板让用户手动指认
+      setBomMappingColumns(result.columns);
+      setBomMappingData(result.data);
+      setBomMappingHeaderIdx(result.headerRowIdx);
+      setBomMappingOpen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Excel 解析失败，请检查文件格式");
     } finally {
       setImportingBom(false);
       if (bomExcelInputRef.current) bomExcelInputRef.current.value = "";
     }
+  };
+
+  // 应用解析出的物料行（合并进现有 BOM）
+  const applyBomRows = (rows: ParsedBomRow[]) => {
+    if (rows.length === 0) {
+      setError("Excel 中没有解析到有效的物料数据");
+      return;
+    }
+    setBom((prev) => [
+      ...prev,
+      ...rows.map((r) => ({
+        designator: r.designator,
+        partNo: r.partNo,
+        package: r.package,
+        qty: r.qty,
+        unitPrice: r.unitPrice,
+        note: r.note,
+      })),
+    ]);
+    setError("");
+  };
+
+  // 列映射面板：更新某一列的字段指定
+  const updateBomColumnMapping = (colIdx: number, field: BomFieldKey | null) => {
+    setBomMappingColumns((prev) => prev.map((c) => (c.index === colIdx ? { ...c, recognized: field } : c)));
+  };
+
+  // 列映射面板：确认解析
+  const confirmBomMapping = () => {
+    const hasPartNo = bomMappingColumns.some((c) => c.recognized === "partNo");
+    if (!hasPartNo) {
+      setError("请至少指定一列为「名称/型号」");
+      return;
+    }
+    const rows = buildRowsWithMapping(bomMappingData, bomMappingHeaderIdx, bomMappingColumns);
+    setBomMappingOpen(false);
+    applyBomRows(rows);
   };
 
   const removeBomRow = (idx: number) => setBom((prev) => prev.filter((_, i) => i !== idx));
@@ -610,6 +646,8 @@ export default function PublishForm({ initial }: { initial?: ProjectFormInitial 
           bomSearch={bomSearch} setBomSearch={setBomSearch} filteredParts={filteredParts}
           addBomFromLibrary={addBomFromLibrary} addBomManual={addBomManual} updateBom={updateBom} removeBomRow={removeBomRow}
           importingBom={importingBom} onBomExcelUpload={handleBomExcelUpload} bomExcelInputRef={bomExcelInputRef}
+          bomMappingOpen={bomMappingOpen} bomMappingColumns={bomMappingColumns}
+          updateBomColumnMapping={updateBomColumnMapping} confirmBomMapping={confirmBomMapping} cancelBomMapping={() => setBomMappingOpen(false)}
           steps={steps} addStep={addStep} removeStep={removeStep} moveStep={moveStep} updateStep={updateStep} onStepImageUpload={handleStepImageUpload}
           media={media} imageCount={imageCount} uploadingMedia={uploadingMedia} onMediaUpload={handleMediaUpload} mediaInputRef={mediaInputRef}
           addVideo={addVideo} removeMedia={removeMedia} updateMedia={updateMedia}
@@ -672,6 +710,7 @@ interface EditStageProps {
   bomSearch: string; setBomSearch: (v: string) => void; filteredParts: LibraryPart[];
   addBomFromLibrary: (p: LibraryPart) => void; addBomManual: () => void; updateBom: (idx: number, f: keyof BomRow, v: string | number) => void; removeBomRow: (idx: number) => void;
   importingBom: boolean; onBomExcelUpload: (f: FileList | null) => void; bomExcelInputRef: React.RefObject<HTMLInputElement | null>;
+  bomMappingOpen: boolean; bomMappingColumns: BomColumn[]; updateBomColumnMapping: (colIdx: number, field: BomFieldKey | null) => void; confirmBomMapping: () => void; cancelBomMapping: () => void;
   steps: StepRow[]; addStep: () => void; removeStep: (idx: number) => void; moveStep: (idx: number, d: -1 | 1) => void; updateStep: (idx: number, f: keyof StepRow, v: string) => void; onStepImageUpload: (idx: number, f: FileList | null) => void;
   media: MediaRow[]; imageCount: number; uploadingMedia: boolean; onMediaUpload: (f: FileList | null) => void; mediaInputRef: React.RefObject<HTMLInputElement | null>;
   addVideo: () => void; removeMedia: (idx: number) => void; updateMedia: (idx: number, f: keyof MediaRow, v: string) => void;
@@ -687,6 +726,7 @@ function EditStage(props: EditStageProps) {
     bom, bomTotal, bomSearchOpen, setBomSearchOpen, bomSearch, setBomSearch,
     filteredParts, addBomFromLibrary, addBomManual, updateBom, removeBomRow,
     importingBom, onBomExcelUpload, bomExcelInputRef,
+    bomMappingOpen, bomMappingColumns, updateBomColumnMapping, confirmBomMapping, cancelBomMapping,
     steps, addStep, removeStep, moveStep, updateStep, onStepImageUpload,
     media, imageCount, uploadingMedia, onMediaUpload, mediaInputRef, addVideo, removeMedia, updateMedia,
     repos, addRepo, removeRepo, updateRepo,
@@ -833,6 +873,38 @@ function EditStage(props: EditStageProps) {
             </div>
           )}
         </Block>
+
+        {/* 列映射面板（方案 C：自动识别不全时弹出，让用户手动指认每列含义） */}
+        {bomMappingOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={cancelBomMapping}>
+            <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-base font-semibold text-ink">未能完全识别表格列</h3>
+              <p className="mt-1 text-sm text-ink-secondary">请为每一列指定含义，不需要的列选「忽略」。</p>
+              <div className="mt-4 flex flex-col gap-2">
+                {bomMappingColumns.map((col) => (
+                  <div key={col.index} className="flex items-center gap-3 rounded-xl border border-border px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-ink">{col.header || `第 ${col.index + 1} 列`}</div>
+                    </div>
+                    <select
+                      value={col.recognized ?? ""}
+                      onChange={(e) => updateBomColumnMapping(col.index, (e.target.value || null) as BomFieldKey | null)}
+                      className="h-9 w-32 rounded-lg border border-border bg-white px-2 text-sm text-ink focus:border-primary focus:outline-none">
+                      <option value="">忽略</option>
+                      {BOM_FIELDS.map((f) => (
+                        <option key={f.key} value={f.key}>{f.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 flex gap-2">
+                <button onClick={cancelBomMapping} className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm text-ink-secondary hover:bg-surface">取消</button>
+                <button onClick={confirmBomMapping} className="flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark">确认解析</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 制作步骤 */}
         <Block label="制作步骤" must="可选 · 可上下移动排序 · 引导他人复刻">
