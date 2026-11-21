@@ -794,30 +794,63 @@ function EditStage(props: EditStageProps) {
                   <div className="min-w-0 flex-1">
                     {row.libraryId ? (
                       <>
-                        <div className="truncate text-sm font-semibold text-ink">{row.partNo}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <span className="text-xs text-ink-tertiary">{row.category || "元器件"}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-ink">{row.partNo}</span>
                           {row.autoTags && row.autoTags.length > 0 && (
-                            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] text-primary">自动关联「{row.autoTags.join("、")}」标签</span>
+                            <span className="shrink-0 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] text-primary">自动关联「{row.autoTags.join("、")}」标签</span>
                           )}
-                          <span className="ml-auto flex items-center gap-1.5">
-                            <span className="text-xs text-ink-tertiary">数量</span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <span className="flex items-center gap-1 text-xs text-ink-tertiary">
+                            位号
+                            <input value={row.designator} onChange={(e) => updateBom(idx, "designator", e.target.value)}
+                              placeholder="R1,C2" className="h-7 w-20 rounded-lg border border-border px-2 text-xs text-ink focus:border-primary focus:outline-none" />
+                          </span>
+                          <span className="flex items-center gap-1 text-xs text-ink-tertiary">
+                            封装
+                            <input value={row.package} onChange={(e) => updateBom(idx, "package", e.target.value)}
+                              placeholder="0603" className="h-7 w-20 rounded-lg border border-border px-2 text-xs text-ink focus:border-primary focus:outline-none" />
+                          </span>
+                          <span className="flex items-center gap-1 text-xs text-ink-tertiary">
+                            数量
                             <input type="number" min={1} value={row.qty || 1} onChange={(e) => updateBom(idx, "qty", Number(e.target.value))}
-                              className="h-8 w-16 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
-                            <span className="text-xs text-ink-tertiary">单价 ¥</span>
+                              className="h-7 w-14 rounded-lg border border-border px-2 text-xs text-ink focus:border-primary focus:outline-none" />
+                          </span>
+                          <span className="flex items-center gap-1 text-xs text-ink-tertiary">
+                            单价 ¥
                             <input type="number" min={0} step="0.01" value={row.unitPrice || ""} onChange={(e) => updateBom(idx, "unitPrice", Number(e.target.value))}
-                              placeholder="0" className="h-8 w-24 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
+                              placeholder="0" className="h-7 w-20 rounded-lg border border-border px-2 text-xs text-ink focus:border-primary focus:outline-none" />
+                          </span>
+                          <span className="flex min-w-0 flex-1 items-center gap-1 text-xs text-ink-tertiary">
+                            备注
+                            <input value={row.note} onChange={(e) => updateBom(idx, "note", e.target.value)}
+                              placeholder="选填" className="h-7 min-w-0 flex-1 rounded-lg border border-border px-2 text-xs text-ink focus:border-primary focus:outline-none" />
                           </span>
                         </div>
                       </>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
+                        <span className="flex items-center gap-1 text-xs text-ink-tertiary">
+                          位号
+                          <input value={row.designator} onChange={(e) => updateBom(idx, "designator", e.target.value)}
+                            placeholder="R1" className="h-8 w-16 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
+                        </span>
                         <input value={row.partNo} onChange={(e) => updateBom(idx, "partNo", e.target.value)}
                           placeholder="元器件名称" className="h-8 min-w-0 flex-1 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
+                        <span className="flex items-center gap-1 text-xs text-ink-tertiary">
+                          封装
+                          <input value={row.package} onChange={(e) => updateBom(idx, "package", e.target.value)}
+                            placeholder="0603" className="h-8 w-20 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
+                        </span>
                         <input type="number" value={row.unitPrice || ""} onChange={(e) => updateBom(idx, "unitPrice", Number(e.target.value))}
                           placeholder="单价" className="h-8 w-20 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
                         <input type="number" value={row.qty || 1} onChange={(e) => updateBom(idx, "qty", Number(e.target.value))}
                           placeholder="数量" className="h-8 w-16 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
+                        <span className="flex min-w-0 flex-1 items-center gap-1 text-xs text-ink-tertiary">
+                          备注
+                          <input value={row.note} onChange={(e) => updateBom(idx, "note", e.target.value)}
+                            placeholder="选填" className="h-8 min-w-0 flex-1 rounded-lg border border-border px-2 text-sm text-ink focus:border-primary focus:outline-none" />
+                        </span>
                       </div>
                     )}
                   </div>
