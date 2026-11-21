@@ -38,6 +38,7 @@ const HEADER_ALIASES: Record<string, BomFieldKey> = {
   // 位号
   "位号": "designator", "designator": "designator", "reference": "designator", "ref": "designator",
   "编号": "designator", "序号": "designator", "designators": "designator", "位号/编号": "designator",
+  "ref des": "designator", "refdes": "designator", "reference designator": "designator",
   // 封装
   "封装": "package", "package": "package", "封装形式": "package", "footprint": "package", "封装/型号": "package",
   // 数量
@@ -70,9 +71,11 @@ export function mapHeader(raw: string): BomFieldKey | null {
   if (cleaned.includes("单价") || cleaned.includes("价格") || cleaned.includes("金额") || cleaned.includes("price") || cleaned.includes("cost")) return "unitPrice";
   if (cleaned.includes("数量") || cleaned.includes("用量") || cleaned.includes("qty") || cleaned.includes("quantity") || cleaned.includes("count")) return "qty";
   if (cleaned.includes("封装") || cleaned.includes("footprint") || cleaned.includes("package")) return "package";
-  // 名称/型号：优先精确语义，避免把 Manufacturer Part / Supplier Part 误判
-  if (cleaned.includes("型号") || cleaned.includes("名称") || cleaned.includes("物料") || cleaned.includes("品名") || cleaned.includes("mpn") || cleaned.includes("value") || cleaned.includes("comment") || cleaned.includes("name") || cleaned.includes("description") || cleaned.includes("libref")) return "partNo";
-  if (cleaned.includes("位号") || cleaned.includes("编号") || cleaned.includes("序号") || cleaned.includes("designator") || cleaned.includes("reference")) return "designator";
+  // 名称/型号：优先精确语义，避免把 Manufacturer Part / Supplier Part / 物料编码 等误判
+  if (cleaned.includes("型号") || cleaned.includes("名称") || cleaned.includes("品名") || cleaned.includes("mpn") || cleaned.includes("value") || cleaned.includes("comment") || cleaned.includes("name") || cleaned.includes("description") || cleaned.includes("libref")) return "partNo";
+  // 「物料」仅当紧跟「名称」或单独出现才表示名称；「物料编码/物料号/物料代码」是编码，应忽略
+  if (cleaned.includes("物料名称") || cleaned === "物料") return "partNo";
+  if (cleaned.includes("位号") || cleaned.includes("序号") || cleaned.includes("designator") || cleaned.includes("reference")) return "designator";
   if (cleaned.includes("备注") || cleaned.includes("说明") || cleaned.includes("描述") || cleaned.includes("note") || cleaned.includes("remark")) return "note";
   // 兜底：含 part 但不在 Manufacturer/Supplier 语境下，才视为名称
   if (cleaned.includes("part") && !cleaned.includes("manufacturer") && !cleaned.includes("supplier")) return "partNo";
@@ -152,12 +155,22 @@ export function buildRowsWithMapping(
 }
 
 function buildRows(data: unknown[][], headerRowIdx: number, columns: BomColumn[]): ParsedBomRow[] {
+  // 去重：同一字段若被多列映射（如"物料名称"与"规格型号"都识别为 partNo），
+  // 只保留最靠左的一列，避免后面的列覆盖前面的值
+  const seen = new Set<BomFieldKey>();
+  const effectiveColumns = columns.filter((col) => {
+    if (!col.recognized) return false;
+    if (seen.has(col.recognized)) return false;
+    seen.add(col.recognized);
+    return true;
+  });
+
   const result: ParsedBomRow[] = [];
   for (let i = headerRowIdx + 1; i < data.length; i++) {
     const row = data[i] as unknown[];
     const item: ParsedBomRow = { designator: "", partNo: "", package: "", qty: 1, unitPrice: 0, note: "" };
     let hasContent = false;
-    columns.forEach((col) => {
+    effectiveColumns.forEach((col) => {
       if (!col.recognized) return;
       const cell = row[col.index];
       const str = String(cell ?? "").trim();
